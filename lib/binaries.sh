@@ -10,18 +10,26 @@ needs_resolution() {
 install_nodejs() {
   local version="$1"
   local dir="$2"
+  local download_url=
 
-  if needs_resolution "$version"; then
+  if [[ "${version:0:8}" = "https://" ]]; then
+    download_url="${version}"
+  elif needs_resolution "$version"; then
     echo "Resolving node version ${version:-(latest stable)} via semver.io..."
     local version=$(curl --silent --get --retry 5 --retry-max-time 15 --data-urlencode "range=${version}" https://semver.herokuapp.com/node/resolve)
   fi
 
+  if [[ -z "${download_url}" ]]; then
+    download_url="http://s3pository.heroku.com/node/v$version/node-v$version-$os-$cpu.tar.gz"
+  fi
+
   echo "Downloading and installing node $version..."
-  local download_url="https://s3pository.heroku.com/node/v$version/node-v$version-$os-$cpu.tar.gz"
-  curl "$download_url" --silent --fail  --retry 5 --retry-max-time 15 -o /tmp/node.tar.gz || (echo "Unable to download node $version; does it exist?" && false)
-  tar xzf /tmp/node.tar.gz -C /tmp
+  local tmp="$(mktemp --directory)"
+  trap "rm -rf ${tmp}" EXIT
+  curl "$download_url" --silent --fail --retry 5 --retry-max-time 15 -o "${tmp}/node.tar.gz" || (echo "Unable to download node $version; does it exist?" && false)
+  tar xzf "${tmp}/node.tar.gz" -C "${tmp}"
   rm -rf $dir/*
-  mv /tmp/node-v$version-$os-$cpu/* $dir
+  mv "${tmp}"/node-v*/* $dir
   chmod +x $dir/bin/*
 }
 
